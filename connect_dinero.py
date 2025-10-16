@@ -15,6 +15,7 @@ caller can confirm the integration is working.
 
 from __future__ import annotations
 
+import base64
 import os
 import sys
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ from typing import Any, Dict
 
 import requests
 
-TOKEN_URL = "https://auth.dinero.dk/connect/token"
+TOKEN_URL = "https://authz.dinero.dk/dineroapi/oauth/token"
 API_BASE_URL = "https://api.dinero.dk/v1"
 
 
@@ -58,13 +59,22 @@ class DineroCredentials:
 def fetch_access_token(credentials: DineroCredentials) -> str:
     """Fetch an OAuth access token from Dinero."""
 
+    encoded = base64.b64encode(
+        f"{credentials.client_id}:{credentials.client_secret}".encode("utf-8")
+    ).decode("ascii")
+
     response = requests.post(
         TOKEN_URL,
         data={
-            "grant_type": "client_credentials",
+            "grant_type": "password",
             "scope": "read write",
+            "username": credentials.api_key,
+            "password": credentials.api_key,
         },
-        auth=(credentials.client_id, credentials.client_secret),
+        headers={
+            "Authorization": f"Basic {encoded}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
     )
     try:
         response.raise_for_status()

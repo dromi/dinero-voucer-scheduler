@@ -1,8 +1,9 @@
 # Dinero Voucher Scheduler
 
 This repository currently provides a helper script that verifies connectivity
-with the Dinero API using the credentials made available in the following
-environment variables:
+with the Dinero API using the "personal integration" flow described in the
+Dinero documentation. The script expects the following environment variables
+to be defined:
 
 - `DINERO_CLIENT_ID`
 - `DINERO_CLIENT_SECRET`
@@ -41,4 +42,7 @@ environment variables:
    ```
 
 If the credentials are valid you will see a confirmation message printed to
-stdout.
+stdout. The script exchanges the client ID/secret and API key for an access
+token using `https://authz.dinero.dk/dineroapi/oauth/token` before performing
+a lightweight request against the organization endpoint, which mirrors the
+manual steps described in the Dinero "Personal integration" guide.
