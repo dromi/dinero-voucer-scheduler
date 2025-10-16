@@ -19,6 +19,7 @@ import base64
 import os
 import sys
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Dict
 
 import requests
@@ -130,11 +131,51 @@ def fetch_organization_details(credentials: DineroCredentials, token: str) -> Di
     )
 
 
+def create_manual_voucher(
+    credentials: DineroCredentials,
+    token: str,
+) -> Dict[str, Any]:
+    """Create a manual voucher to verify write permissions."""
+
+    url = f"{API_BASE_URL}/{credentials.organization_id}/vouchers/manuel"
+    payload = {
+        "voucherDate": date.today().isoformat(),
+        "lines": [
+            {
+                "description": "this is a test manual voucher from codex",
+                "accountNumber": 55000,
+                "balancingAccountNumber": 60140,
+                "amount": -999,
+                "accountVatCode": "NULL",
+                "balancingAccountVatCode": "NULL",
+            }
+        ],
+    }
+
+    response = requests.post(
+        url,
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "x-api-key": credentials.api_key,
+        },
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:  # pragma: no cover - convenience for users
+        raise RuntimeError("Failed to create a manual voucher in Dinero.") from exc
+
+    return response.json()
+
+
 def main() -> int:
     try:
         credentials = DineroCredentials.from_env()
         token = fetch_access_token(credentials)
         organization = fetch_organization_details(credentials, token)
+        voucher = create_manual_voucher(credentials, token)
     except MissingEnvironmentVariable as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -143,10 +184,15 @@ def main() -> int:
         return 1
 
     org_name = organization.get("Name") or organization.get("name") or "<unknown>"
+    voucher_number = voucher.get("voucherNumber") or voucher.get("VoucherNumber")
     print(
         f"Successfully connected to Dinero organization '{org_name}' "
         f"(ID: {credentials.organization_id})."
     )
+    if voucher_number is not None:
+        print(f"Created manual voucher number {voucher_number}.")
+    else:
+        print("Created manual voucher.")
     return 0
 
 
