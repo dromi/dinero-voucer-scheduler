@@ -12,9 +12,9 @@ export DINERO_CLIENT_SECRET="replace-with-client-secret"
 export DINERO_API_KEY="replace-with-api-key"
 export DINERO_ORG_ID="replace-with-organization-id"
 
-VOUCHER_DATE="$(date +%Y-%m-%d)"
-DESCRIPTION="this is a test manual voucher from codex"
-AMOUNT="999"
+VOUCHER_DATE="$(date +%Y-%m-01)"
+DESCRIPTION="Danica Pension"
+AMOUNT="2092.10"
 
 python connect_dinero.py \
   --voucher-date "${VOUCHER_DATE}" \

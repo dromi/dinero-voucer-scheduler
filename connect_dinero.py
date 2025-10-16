@@ -248,12 +248,14 @@ def main() -> int:
         credentials = DineroCredentials.from_env()
         token = fetch_access_token(credentials)
         organization = fetch_organization_details(credentials, token)
+        normalized_amount = args.amount if args.amount <= 0 else -args.amount
+
         voucher = create_manual_voucher(
             credentials,
             token,
             voucher_date=voucher_date,
             description=args.description,
-            amount=args.amount,
+            amount=normalized_amount,
         )
         voucher_guid = (
             voucher.get("guid")
