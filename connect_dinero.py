@@ -15,6 +15,7 @@ caller can confirm the integration is working.
 
 from __future__ import annotations
 
+import base64
 import os
 import sys
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ from typing import Any, Dict
 
 import requests
 
-TOKEN_URL = "https://auth.dinero.dk/connect/token"
+TOKEN_URL = "https://authz.dinero.dk/dineroapi/oauth/token"
 API_BASE_URL = "https://api.dinero.dk/v1"
 
 
@@ -58,13 +59,22 @@ class DineroCredentials:
 def fetch_access_token(credentials: DineroCredentials) -> str:
     """Fetch an OAuth access token from Dinero."""
 
+    encoded = base64.b64encode(
+        f"{credentials.client_id}:{credentials.client_secret}".encode("utf-8")
+    ).decode("ascii")
+
     response = requests.post(
         TOKEN_URL,
         data={
-            "grant_type": "client_credentials",
+            "grant_type": "password",
             "scope": "read write",
+            "username": credentials.api_key,
+            "password": credentials.api_key,
         },
-        auth=(credentials.client_id, credentials.client_secret),
+        headers={
+            "Authorization": f"Basic {encoded}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
     )
     try:
         response.raise_for_status()
@@ -86,9 +96,10 @@ def fetch_access_token(credentials: DineroCredentials) -> str:
 def fetch_organization_details(credentials: DineroCredentials, token: str) -> Dict[str, Any]:
     """Retrieve organization details to verify the connection."""
 
-    url = f"{API_BASE_URL}/{credentials.organization_id}/organization"
+    url = f"{API_BASE_URL}/organizations"
     response = requests.get(
         url,
+        params={"fields": "id,name,isPro"},
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -103,7 +114,20 @@ def fetch_organization_details(credentials: DineroCredentials, token: str) -> Di
             "Failed to fetch organization details from Dinero."
         ) from exc
 
-    return response.json()
+    organizations = response.json()
+    if not isinstance(organizations, list):
+        raise RuntimeError("Unexpected response while listing Dinero organizations.")
+
+    wanted_id = credentials.organization_id.lower()
+    for organization in organizations:
+        org_id = str(organization.get("Id") or organization.get("id") or "").lower()
+        if org_id == wanted_id:
+            return organization
+
+    raise RuntimeError(
+        "The provided organization ID was not returned by Dinero. "
+        "Ensure the API key belongs to the specified organization."
+    )
 
 
 def main() -> int:
