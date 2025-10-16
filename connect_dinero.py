@@ -179,6 +179,7 @@ def book_manual_voucher(
     credentials: DineroCredentials,
     token: str,
     voucher_guid: str,
+    timestamp: str,
 ) -> Optional[Dict[str, Any]]:
     """Book a previously created manual voucher."""
 
@@ -189,6 +190,7 @@ def book_manual_voucher(
 
     response = requests.post(
         url,
+        json={"timestamp": timestamp},
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -214,24 +216,20 @@ def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
             "afterwards."
         )
     )
-    default_date = date.today().isoformat()
     parser.add_argument(
         "--voucher-date",
-        default=default_date,
-        help=(
-            "ISO formatted date to use for the manual voucher (default: today, "
-            f"{default_date})."
-        ),
+        required=True,
+        help="ISO formatted date (YYYY-MM-DD) to use for the manual voucher.",
     )
     parser.add_argument(
         "--description",
-        default="this is a test manual voucher from codex",
+        required=True,
         help="Description for the manual voucher line.",
     )
     parser.add_argument(
         "--amount",
         type=float,
-        default=-999.0,
+        required=True,
         help="Amount to post on the manual voucher line.",
     )
     return parser.parse_args(argv)
@@ -265,7 +263,17 @@ def main() -> int:
         )
         if not voucher_guid:
             raise RuntimeError("Dinero response did not include a voucher GUID to book.")
-        book_manual_voucher(credentials, token, voucher_guid)
+        timestamp = (
+            voucher.get("timestamp")
+            or voucher.get("Timestamp")
+            or voucher.get("timeStamp")
+            or voucher.get("TimeStamp")
+        )
+        if not isinstance(timestamp, str) or not timestamp.strip():
+            raise RuntimeError(
+                "Dinero response did not include a timestamp required to book the voucher."
+            )
+        book_manual_voucher(credentials, token, voucher_guid, timestamp)
     except MissingEnvironmentVariable as exc:
         print(str(exc), file=sys.stderr)
         return 1
