@@ -15,12 +15,13 @@ caller can confirm the integration is working.
 
 from __future__ import annotations
 
+import argparse
 import base64
 import os
 import sys
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import requests
 
@@ -134,20 +135,24 @@ def fetch_organization_details(credentials: DineroCredentials, token: str) -> Di
 def create_manual_voucher(
     credentials: DineroCredentials,
     token: str,
+    *,
+    voucher_date: str,
+    description: str,
+    amount: float,
 ) -> Dict[str, Any]:
     """Create a manual voucher to verify write permissions."""
 
     url = f"{API_BASE_URL}/{credentials.organization_id}/vouchers/manuel"
     payload = {
-        "voucherDate": date.today().isoformat(),
+        "voucherDate": voucher_date,
         "lines": [
             {
-                "description": "this is a test manual voucher from codex",
+                "description": description,
                 "accountNumber": 55000,
                 "balancingAccountNumber": 60140,
-                "amount": -999,
-                "accountVatCode": "NULL",
-                "balancingAccountVatCode": "NULL",
+                "amount": amount,
+                "accountVatCode": None,
+                "balancingAccountVatCode": None,
             }
         ],
     }
@@ -170,12 +175,97 @@ def create_manual_voucher(
     return response.json()
 
 
+def book_manual_voucher(
+    credentials: DineroCredentials,
+    token: str,
+    voucher_guid: str,
+) -> Optional[Dict[str, Any]]:
+    """Book a previously created manual voucher."""
+
+    url = (
+        f"{API_BASE_URL}/{credentials.organization_id}/vouchers/manuel/"
+        f"{voucher_guid}/book"
+    )
+
+    response = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "x-api-key": credentials.api_key,
+        },
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:  # pragma: no cover - convenience for users
+        raise RuntimeError("Failed to book the manual voucher in Dinero.") from exc
+
+    if not response.content:
+        return None
+
+    return response.json()
+
+
+def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Verify Dinero connectivity, create a manual voucher, and book it "
+            "afterwards."
+        )
+    )
+    default_date = date.today().isoformat()
+    parser.add_argument(
+        "--voucher-date",
+        default=default_date,
+        help=(
+            "ISO formatted date to use for the manual voucher (default: today, "
+            f"{default_date})."
+        ),
+    )
+    parser.add_argument(
+        "--description",
+        default="this is a test manual voucher from codex",
+        help="Description for the manual voucher line.",
+    )
+    parser.add_argument(
+        "--amount",
+        type=float,
+        default=-999.0,
+        help="Amount to post on the manual voucher line.",
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> int:
     try:
+        args = parse_arguments(sys.argv[1:])
+        try:
+            voucher_date = date.fromisoformat(args.voucher_date).isoformat()
+        except ValueError as exc:
+            raise RuntimeError(
+                "--voucher-date must be a valid ISO formatted date (YYYY-MM-DD)."
+            ) from exc
+
         credentials = DineroCredentials.from_env()
         token = fetch_access_token(credentials)
         organization = fetch_organization_details(credentials, token)
-        voucher = create_manual_voucher(credentials, token)
+        voucher = create_manual_voucher(
+            credentials,
+            token,
+            voucher_date=voucher_date,
+            description=args.description,
+            amount=args.amount,
+        )
+        voucher_guid = (
+            voucher.get("guid")
+            or voucher.get("Guid")
+            or voucher.get("voucherGuid")
+            or voucher.get("VoucherGuid")
+        )
+        if not voucher_guid:
+            raise RuntimeError("Dinero response did not include a voucher GUID to book.")
+        book_manual_voucher(credentials, token, voucher_guid)
     except MissingEnvironmentVariable as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -193,6 +283,7 @@ def main() -> int:
         print(f"Created manual voucher number {voucher_number}.")
     else:
         print("Created manual voucher.")
+    print(f"Booked manual voucher with GUID {voucher_guid}.")
     return 0
 
 
