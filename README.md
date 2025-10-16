@@ -43,6 +43,8 @@ to be defined:
 
 If the credentials are valid you will see a confirmation message printed to
 stdout. The script exchanges the client ID/secret and API key for an access
-token using `https://authz.dinero.dk/dineroapi/oauth/token` before performing
-a lightweight request against the organization endpoint, which mirrors the
-manual steps described in the Dinero "Personal integration" guide.
+token using `https://authz.dinero.dk/dineroapi/oauth/token` before listing the
+organizations available to your credentials via `GET /v1/organizations`. It
+then confirms that the provided `DINERO_ORG_ID` appears in that list, mirroring
+the manual validation steps described in the Dinero "Personal integration"
+guide.

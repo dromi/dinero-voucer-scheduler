@@ -96,9 +96,10 @@ def fetch_access_token(credentials: DineroCredentials) -> str:
 def fetch_organization_details(credentials: DineroCredentials, token: str) -> Dict[str, Any]:
     """Retrieve organization details to verify the connection."""
 
-    url = f"{API_BASE_URL}/{credentials.organization_id}/organization"
+    url = f"{API_BASE_URL}/organizations"
     response = requests.get(
         url,
+        params={"fields": "id,name,isPro"},
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -113,7 +114,20 @@ def fetch_organization_details(credentials: DineroCredentials, token: str) -> Di
             "Failed to fetch organization details from Dinero."
         ) from exc
 
-    return response.json()
+    organizations = response.json()
+    if not isinstance(organizations, list):
+        raise RuntimeError("Unexpected response while listing Dinero organizations.")
+
+    wanted_id = credentials.organization_id.lower()
+    for organization in organizations:
+        org_id = str(organization.get("Id") or organization.get("id") or "").lower()
+        if org_id == wanted_id:
+            return organization
+
+    raise RuntimeError(
+        "The provided organization ID was not returned by Dinero. "
+        "Ensure the API key belongs to the specified organization."
+    )
 
 
 def main() -> int:
