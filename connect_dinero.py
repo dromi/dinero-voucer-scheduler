@@ -15,11 +15,13 @@ caller can confirm the integration is working.
 
 from __future__ import annotations
 
+import argparse
 import base64
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, Dict
+from datetime import date
+from typing import Any, Dict, Optional
 
 import requests
 
@@ -130,11 +132,150 @@ def fetch_organization_details(credentials: DineroCredentials, token: str) -> Di
     )
 
 
+def create_manual_voucher(
+    credentials: DineroCredentials,
+    token: str,
+    *,
+    voucher_date: str,
+    description: str,
+    amount: float,
+) -> Dict[str, Any]:
+    """Create a manual voucher to verify write permissions."""
+
+    url = f"{API_BASE_URL}/{credentials.organization_id}/vouchers/manuel"
+    payload = {
+        "voucherDate": voucher_date,
+        "lines": [
+            {
+                "description": description,
+                "accountNumber": 55000,
+                "balancingAccountNumber": 60140,
+                "amount": amount,
+                "accountVatCode": None,
+                "balancingAccountVatCode": None,
+            }
+        ],
+    }
+
+    response = requests.post(
+        url,
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "x-api-key": credentials.api_key,
+        },
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:  # pragma: no cover - convenience for users
+        raise RuntimeError("Failed to create a manual voucher in Dinero.") from exc
+
+    return response.json()
+
+
+def book_manual_voucher(
+    credentials: DineroCredentials,
+    token: str,
+    voucher_guid: str,
+    timestamp: str,
+) -> Optional[Dict[str, Any]]:
+    """Book a previously created manual voucher."""
+
+    url = (
+        f"{API_BASE_URL}/{credentials.organization_id}/vouchers/manuel/"
+        f"{voucher_guid}/book"
+    )
+
+    response = requests.post(
+        url,
+        json={"timestamp": timestamp},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "x-api-key": credentials.api_key,
+        },
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:  # pragma: no cover - convenience for users
+        raise RuntimeError("Failed to book the manual voucher in Dinero.") from exc
+
+    if not response.content:
+        return None
+
+    return response.json()
+
+
+def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Verify Dinero connectivity, create a manual voucher, and book it "
+            "afterwards."
+        )
+    )
+    parser.add_argument(
+        "--voucher-date",
+        required=True,
+        help="ISO formatted date (YYYY-MM-DD) to use for the manual voucher.",
+    )
+    parser.add_argument(
+        "--description",
+        required=True,
+        help="Description for the manual voucher line.",
+    )
+    parser.add_argument(
+        "--amount",
+        type=float,
+        required=True,
+        help="Amount to post on the manual voucher line.",
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> int:
     try:
+        args = parse_arguments(sys.argv[1:])
+        try:
+            voucher_date = date.fromisoformat(args.voucher_date).isoformat()
+        except ValueError as exc:
+            raise RuntimeError(
+                "--voucher-date must be a valid ISO formatted date (YYYY-MM-DD)."
+            ) from exc
+
         credentials = DineroCredentials.from_env()
         token = fetch_access_token(credentials)
         organization = fetch_organization_details(credentials, token)
+        normalized_amount = args.amount if args.amount <= 0 else -args.amount
+
+        voucher = create_manual_voucher(
+            credentials,
+            token,
+            voucher_date=voucher_date,
+            description=args.description,
+            amount=normalized_amount,
+        )
+        voucher_guid = (
+            voucher.get("guid")
+            or voucher.get("Guid")
+            or voucher.get("voucherGuid")
+            or voucher.get("VoucherGuid")
+        )
+        if not voucher_guid:
+            raise RuntimeError("Dinero response did not include a voucher GUID to book.")
+        timestamp = (
+            voucher.get("timestamp")
+            or voucher.get("Timestamp")
+            or voucher.get("timeStamp")
+            or voucher.get("TimeStamp")
+        )
+        if not isinstance(timestamp, str) or not timestamp.strip():
+            raise RuntimeError(
+                "Dinero response did not include a timestamp required to book the voucher."
+            )
+        book_manual_voucher(credentials, token, voucher_guid, timestamp)
     except MissingEnvironmentVariable as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -143,10 +284,16 @@ def main() -> int:
         return 1
 
     org_name = organization.get("Name") or organization.get("name") or "<unknown>"
+    voucher_number = voucher.get("voucherNumber") or voucher.get("VoucherNumber")
     print(
         f"Successfully connected to Dinero organization '{org_name}' "
         f"(ID: {credentials.organization_id})."
     )
+    if voucher_number is not None:
+        print(f"Created manual voucher number {voucher_number}.")
+    else:
+        print("Created manual voucher.")
+    print(f"Booked manual voucher with GUID {voucher_guid}.")
     return 0
 
 
