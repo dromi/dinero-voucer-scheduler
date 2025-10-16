@@ -12,22 +12,9 @@ export DINERO_CLIENT_SECRET="replace-with-client-secret"
 export DINERO_API_KEY="replace-with-api-key"
 export DINERO_ORG_ID="replace-with-organization-id"
 
-VOUCHER_DATE=${DINERO_VOUCHER_DATE:-}
-DESCRIPTION=${DINERO_VOUCHER_DESCRIPTION:-}
-AMOUNT=${DINERO_VOUCHER_AMOUNT:-}
-
-if [[ -z "${VOUCHER_DATE}" || -z "${DESCRIPTION}" || -z "${AMOUNT}" ]]; then
-  cat <<'EOF'
-Missing Dinero manual voucher details.
-Please set the following environment variables before running the script:
-  DINERO_VOUCHER_DATE        ISO date (YYYY-MM-DD)
-  DINERO_VOUCHER_DESCRIPTION Description for the voucher line
-  DINERO_VOUCHER_AMOUNT      Amount for the voucher line
-
-Alternatively, edit run_connect_dinero.sh to hard-code these values.
-EOF
-  exit 1
-fi
+VOUCHER_DATE="$(date +%Y-%m-%d)"
+DESCRIPTION="this is a test manual voucher from codex"
+AMOUNT="999"
 
 python connect_dinero.py \
   --voucher-date "${VOUCHER_DATE}" \
