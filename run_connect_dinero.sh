@@ -16,7 +16,7 @@ VOUCHER_DATE="$(date +%Y-%m-01)"
 DESCRIPTION="Danica Pension"
 AMOUNT="2092.10"
 
-python connect_dinero.py \
-  --voucher-date "${VOUCHER_DATE}" \
-  --description "${DESCRIPTION}" \
-  --amount "${AMOUNT}"
+uv run python connect_dinero.py \
+  --voucher-date "$VOUCHER_DATE" \
+  --description "$DESCRIPTION" \
+  --amount "$AMOUNT"
