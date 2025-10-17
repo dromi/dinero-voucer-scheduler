@@ -147,7 +147,7 @@ def create_manual_voucher(
         "voucherDate": voucher_date,
         "lines": [
             {
-                "description": description,
+                "description": f"AUTOMATED: {description}",
                 "accountNumber": 55000,
                 "balancingAccountNumber": 60140,
                 "amount": amount,
